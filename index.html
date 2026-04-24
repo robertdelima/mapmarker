@@ -3,72 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google Maps - Rastreador de Objetos</title>
+    <title>Rastreador OSM - Salvar Locais</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f4f7f6; }
-        #header { background: #4285F4; color: white; padding: 10px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        #map { height: 45vh; width: 100%; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f0f2f5; }
+        #header { background: #2c3e50; color: white; padding: 12px; text-align: center; z-index: 1000; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        #map { height: 45vh; width: 100%; flex-shrink: 0; }
         
         .container { padding: 15px; flex-grow: 1; overflow-y: auto; }
         .controls { display: flex; gap: 10px; margin-bottom: 20px; }
         
-        button { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        .btn-save { background: #34a853; color: white; flex: 1; }
-        .btn-edit { background: #fbbc05; color: white; padding: 5px 10px; margin-right: 5px; }
-        .btn-delete { background: #ea4335; color: white; padding: 5px 10px; }
+        button { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-save { background: #27ae60; color: white; flex: 1; font-size: 1rem; }
+        .btn-save:active { background: #1e8449; }
         
-        .location-list { list-style: none; padding: 0; }
+        .btn-edit { background: #f39c12; color: white; padding: 6px 12px; margin-right: 5px; }
+        .btn-delete { background: #e74c3c; color: white; padding: 6px 12px; }
+        
+        .location-list { list-style: none; padding: 0; margin: 0; }
         .location-item { 
-            background: white; margin-bottom: 8px; padding: 12px; border-radius: 8px;
+            background: white; margin-bottom: 10px; padding: 15px; border-radius: 8px;
             display: flex; justify-content: space-between; align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border-left: 5px solid #2980b9;
         }
         .location-info { cursor: pointer; flex-grow: 1; }
-        .location-info strong { color: #4285F4; display: block; }
-        .location-info small { color: #7f8c8d; }
+        .location-info strong { color: #2c3e50; font-size: 1.1rem; display: block; }
+        .location-info small { color: #95a5a6; font-size: 0.85rem; }
+        
+        #status { font-size: 0.8rem; color: #bdc3c7; margin-top: 4px; }
     </style>
 </head>
 <body>
 
     <div id="header">
-        <strong>📍 Meus Pontos Google Maps</strong>
-        <div id="status">Carregando mapa...</div>
+        <strong>📍 Gerenciador de Localização</strong>
+        <div id="status">Iniciando mapa...</div>
     </div>
 
     <div id="map"></div>
 
     <div class="container">
         <div class="controls">
-            <button class="btn-save" onclick="saveCurrentLocation()">Salvar Localização com Nome</button>
+            <button class="btn-save" onclick="saveCurrentLocation()">💾 Salvar Local com Nome</button>
         </div>
 
-        <h3>Locais Salvos</h3>
-        <ul id="locationList" class="location-list"></ul>
+        <h3 style="color: #34495e;">Meus Locais Salvos</h3>
+        <ul id="locationList" class="location-list">
+            </ul>
     </div>
 
-    <script src="https://maps.googleapis.com/maps/api/js?key=SUA_API_KEY_AQUI&callback=initMap" async defer></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
         let map;
         let userMarker;
-        let savedMarkers = [];
+        let savedMarkersLayer = L.layerGroup(); // Grupo para gerenciar marcadores salvos
         let userPos = null;
 
-        // 1. Inicializa o Google Maps
+        // 1. Inicializa o Mapa (OpenStreetMap)
         function initMap() {
-            map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 15,
-                center: { lat: -15.78, lng: -47.92 },
-                mapTypeControl: false,
-                streetViewControl: false
-            });
+            map = L.map('map').setView([0, 0], 2);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            savedMarkersLayer.addTo(map);
 
             startTracking();
             renderList();
         }
 
-        // 2. Rastreamento em Tempo Real
+        // 2. Rastreamento GPS em tempo real
         function startTracking() {
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition((position) => {
@@ -77,106 +86,99 @@
                         lng: position.coords.longitude
                     };
 
-                    const pos = { lat: userPos.lat, lng: userPos.lng };
-
                     if (!userMarker) {
-                        userMarker = new google.maps.Marker({
-                            position: pos,
-                            map: map,
-                            icon: {
-                                path: google.maps.SymbolPath.CIRCLE,
-                                scale: 7,
-                                fillOpacity: 1,
-                                fillColor: '#4285F4',
-                                strokeColor: 'white',
-                                strokeWeight: 2
-                            },
-                            title: "Você está aqui"
-                        });
-                        map.setCenter(pos);
+                        // Cria círculo azul para o usuário
+                        userMarker = L.circleMarker([userPos.lat, userPos.lng], {
+                            radius: 8,
+                            fillColor: "#3498db",
+                            color: "#fff",
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        }).addTo(map);
+                        map.setView([userPos.lat, userPos.lng], 16);
                     } else {
-                        userMarker.setPosition(pos);
+                        userMarker.setLatLng([userPos.lat, userPos.lng]);
                     }
-                    document.getElementById('status').innerText = "GPS Conectado";
+                    document.getElementById('status').innerText = "GPS Ativo";
                 }, () => {
-                    document.getElementById('status').innerText = "Erro no GPS";
+                    document.getElementById('status').innerText = "Erro ao acessar GPS";
                 }, { enableHighAccuracy: true });
             }
         }
 
-        // 3. Salvar com Nome
+        // 3. Salvar com nome personalizado
         function saveCurrentLocation() {
-            if (!userPos) return alert("Aguardando sinal de GPS...");
+            if (!userPos) return alert("Aguardando localização do GPS...");
 
-            const name = prompt("Dê um nome para este local:");
-            if (!name) return; // Cancela se não digitar nada
+            const name = prompt("Digite um nome para este local (ex: Carro, Casa, Objeto):");
+            if (name === null || name.trim() === "") return;
 
-            const savedData = JSON.parse(localStorage.getItem('gMapsLocations') || '[]');
+            const savedData = JSON.parse(localStorage.getItem('osmLocations') || '[]');
             const newPoint = {
                 id: Date.now(),
-                name: name,
+                name: name.trim(),
                 lat: userPos.lat,
                 lng: userPos.lng,
-                date: new Date().toLocaleString()
+                date: new Date().toLocaleString('pt-BR')
             };
 
             savedData.push(newPoint);
-            localStorage.setItem('gMapsLocations', JSON.stringify(savedData));
+            localStorage.setItem('osmLocations', JSON.stringify(savedData));
             renderList();
         }
 
-        // 4. Editar Nome
+        // 4. Editar nome de local existente
         function editLocation(id) {
-            let savedData = JSON.parse(localStorage.getItem('gMapsLocations') || '[]');
+            let savedData = JSON.parse(localStorage.getItem('osmLocations') || '[]');
             const index = savedData.findIndex(p => p.id === id);
             
-            const newName = prompt("Editar nome do local:", savedData[index].name);
-            if (newName) {
-                savedData[index].name = newName;
-                localStorage.setItem('gMapsLocations', JSON.stringify(savedData));
-                renderList();
+            if (index !== -1) {
+                const newName = prompt("Editar nome do local:", savedData[index].name);
+                if (newName !== null && newName.trim() !== "") {
+                    savedData[index].name = newName.trim();
+                    localStorage.setItem('osmLocations', JSON.stringify(savedData));
+                    renderList();
+                }
             }
         }
 
-        // 5. Excluir Local
+        // 5. Excluir local
         function deleteLocation(id) {
-            if (confirm("Deseja remover este local?")) {
-                let savedData = JSON.parse(localStorage.getItem('gMapsLocations') || '[]');
+            if (confirm("Tem certeza que deseja excluir este local?")) {
+                let savedData = JSON.parse(localStorage.getItem('osmLocations') || '[]');
                 savedData = savedData.filter(p => p.id !== id);
-                localStorage.setItem('gMapsLocations', JSON.stringify(savedData));
+                localStorage.setItem('osmLocations', JSON.stringify(savedData));
                 renderList();
             }
         }
 
-        // 6. Renderizar Lista e Marcadores
+        // 6. Atualizar Mapa e Lista HTML
         function renderList() {
             const listElement = document.getElementById('locationList');
-            const savedData = JSON.parse(localStorage.getItem('gMapsLocations') || '[]');
+            const savedData = JSON.parse(localStorage.getItem('osmLocations') || '[]');
             
+            // Limpa tudo para reconstruir
             listElement.innerHTML = '';
-            savedMarkers.forEach(m => m.setMap(null));
-            savedMarkers = [];
+            savedMarkersLayer.clearLayers();
 
             savedData.forEach((point) => {
-                // Adicionar Marcador Vermelho (Padrão Google)
-                const marker = new google.maps.Marker({
-                    position: { lat: point.lat, lng: point.lng },
-                    map: map,
-                    title: point.name
-                });
-                savedMarkers.push(marker);
+                // Adiciona marcador no mapa
+                const marker = L.marker([point.lat, point.lng])
+                    .bindPopup(`<b>${point.name}</b><br><small>${point.date}</small>`);
+                savedMarkersLayer.addLayer(marker);
 
-                // Criar Item da Lista
+                // Adiciona item na lista
                 const li = document.createElement('li');
                 li.className = 'location-item';
                 li.innerHTML = `
                     <div class="location-info" onclick="focusMap(${point.lat}, ${point.lng})">
                         <strong>${point.name}</strong>
-                        <small>${point.date}</small>
+                        <small>📅 ${point.date}</small>
                     </div>
                     <div>
-                        <button class="btn-edit" onclick="editLocation(${point.id})">✎</button>
-                        <button class="btn-delete" onclick="deleteLocation(${point.id})">✕</button>
+                        <button class="btn-edit" onclick="editLocation(${point.id})">Editar</button>
+                        <button class="btn-delete" onclick="deleteLocation(${point.id})">Excluir</button>
                     </div>
                 `;
                 listElement.appendChild(li);
@@ -184,9 +186,10 @@
         }
 
         function focusMap(lat, lng) {
-            map.setCenter({ lat, lng });
-            map.setZoom(18);
+            map.setView([lat, lng], 18, { animate: true });
         }
+
+        window.onload = initMap;
     </script>
 </body>
 </html>
