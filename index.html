@@ -3,37 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rastreador OSM - Salvar Locais</title>
+    <title>Rastreador OSM - Compartilhamento GPS</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f0f2f5; }
-        #header { background: #2c3e50; color: white; padding: 12px; text-align: center; z-index: 1000; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        #map { height: 45vh; width: 100%; flex-shrink: 0; }
+        #header { background: #2c3e50; color: white; padding: 12px; text-align: center; z-index: 1000; }
+        #map { height: 40vh; width: 100%; flex-shrink: 0; }
         
         .container { padding: 15px; flex-grow: 1; overflow-y: auto; }
         .controls { display: flex; gap: 10px; margin-bottom: 20px; }
         
-        button { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
         .btn-save { background: #27ae60; color: white; flex: 1; font-size: 1rem; }
-        .btn-save:active { background: #1e8449; }
-        
-        .btn-edit { background: #f39c12; color: white; padding: 6px 12px; margin-right: 5px; }
-        .btn-delete { background: #e74c3c; color: white; padding: 6px 12px; }
         
         .location-list { list-style: none; padding: 0; margin: 0; }
         .location-item { 
-            background: white; margin-bottom: 10px; padding: 15px; border-radius: 8px;
-            display: flex; justify-content: space-between; align-items: center;
+            background: white; margin-bottom: 10px; padding: 12px; border-radius: 8px;
+            display: flex; flex-direction: column; gap: 10px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
             border-left: 5px solid #2980b9;
         }
+        .item-main { display: flex; justify-content: space-between; align-items: center; }
         .location-info { cursor: pointer; flex-grow: 1; }
-        .location-info strong { color: #2c3e50; font-size: 1.1rem; display: block; }
-        .location-info small { color: #95a5a6; font-size: 0.85rem; }
+        .location-info strong { color: #2c3e50; display: block; }
         
-        #status { font-size: 0.8rem; color: #bdc3c7; margin-top: 4px; }
+        .item-actions { display: flex; gap: 8px; border-top: 1px solid #eee; pt: 8px; padding-top: 8px; }
+        .btn-action { font-size: 0.8rem; padding: 6px 10px; flex: 1; }
+        .btn-share { background: #3498db; color: white; }
+        .btn-edit { background: #f39c12; color: white; }
+        .btn-delete { background: #e74c3c; color: white; }
+        
+        #status { font-size: 0.8rem; color: #bdc3c7; }
     </style>
 </head>
 <body>
@@ -47,146 +49,126 @@
 
     <div class="container">
         <div class="controls">
-            <button class="btn-save" onclick="saveCurrentLocation()">💾 Salvar Local com Nome</button>
+            <button class="btn-save" onclick="saveCurrentLocation()">💾 Salvar Localização</button>
         </div>
 
-        <h3 style="color: #34495e;">Meus Locais Salvos</h3>
-        <ul id="locationList" class="location-list">
-            </ul>
+        <ul id="locationList" class="location-list"></ul>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        let map;
-        let userMarker;
-        let savedMarkersLayer = L.layerGroup(); // Grupo para gerenciar marcadores salvos
-        let userPos = null;
+        let map, userMarker, userPos = null;
+        let savedMarkersLayer = L.layerGroup();
 
-        // 1. Inicializa o Mapa (OpenStreetMap)
         function initMap() {
             map = L.map('map').setView([0, 0], 2);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
-
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
             savedMarkersLayer.addTo(map);
-
             startTracking();
             renderList();
         }
 
-        // 2. Rastreamento GPS em tempo real
         function startTracking() {
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition((position) => {
-                    userPos = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-
+                    userPos = { lat: position.coords.latitude, lng: position.coords.longitude };
                     if (!userMarker) {
-                        // Cria círculo azul para o usuário
-                        userMarker = L.circleMarker([userPos.lat, userPos.lng], {
-                            radius: 8,
-                            fillColor: "#3498db",
-                            color: "#fff",
-                            weight: 2,
-                            opacity: 1,
-                            fillOpacity: 0.8
-                        }).addTo(map);
+                        userMarker = L.circleMarker([userPos.lat, userPos.lng], { radius: 8, fillColor: "#3498db", color: "#fff", weight: 2, fillOpacity: 0.8 }).addTo(map);
                         map.setView([userPos.lat, userPos.lng], 16);
                     } else {
                         userMarker.setLatLng([userPos.lat, userPos.lng]);
                     }
-                    document.getElementById('status').innerText = "GPS Ativo";
-                }, () => {
-                    document.getElementById('status').innerText = "Erro ao acessar GPS";
-                }, { enableHighAccuracy: true });
+                    document.getElementById('status').innerText = "Sinal GPS OK";
+                }, null, { enableHighAccuracy: true });
             }
         }
 
-        // 3. Salvar com nome personalizado
         function saveCurrentLocation() {
-            if (!userPos) return alert("Aguardando localização do GPS...");
-
-            const name = prompt("Digite um nome para este local (ex: Carro, Casa, Objeto):");
-            if (name === null || name.trim() === "") return;
+            if (!userPos) return alert("Aguardando GPS...");
+            const name = prompt("Nome do local:");
+            if (!name) return;
 
             const savedData = JSON.parse(localStorage.getItem('osmLocations') || '[]');
-            const newPoint = {
+            savedData.push({
                 id: Date.now(),
-                name: name.trim(),
+                name: name,
                 lat: userPos.lat,
                 lng: userPos.lng,
                 date: new Date().toLocaleString('pt-BR')
-            };
-
-            savedData.push(newPoint);
+            });
             localStorage.setItem('osmLocations', JSON.stringify(savedData));
             renderList();
         }
 
-        // 4. Editar nome de local existente
-        function editLocation(id) {
-            let savedData = JSON.parse(localStorage.getItem('osmLocations') || '[]');
-            const index = savedData.findIndex(p => p.id === id);
+        // --- FUNÇÃO DE COMPARTILHAR ---
+        async function shareLocation(name, lat, lng) {
+            const gMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+            const wazeUrl = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
             
-            if (index !== -1) {
-                const newName = prompt("Editar nome do local:", savedData[index].name);
-                if (newName !== null && newName.trim() !== "") {
-                    savedData[index].name = newName.trim();
-                    localStorage.setItem('osmLocations', JSON.stringify(savedData));
-                    renderList();
+            const shareText = `📍 Localização de: ${name}\n\nGoogle Maps: ${gMapsUrl}\n\nWaze: ${wazeUrl}`;
+
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: `Localização: ${name}`,
+                        text: shareText,
+                        url: gMapsUrl // Link principal
+                    });
+                } catch (err) {
+                    console.log("Compartilhamento cancelado");
                 }
+            } else {
+                // Fallback para navegadores desktop que não suportam Share API
+                prompt("Copie os links abaixo:", shareText);
             }
         }
 
-        // 5. Excluir local
         function deleteLocation(id) {
-            if (confirm("Tem certeza que deseja excluir este local?")) {
-                let savedData = JSON.parse(localStorage.getItem('osmLocations') || '[]');
-                savedData = savedData.filter(p => p.id !== id);
-                localStorage.setItem('osmLocations', JSON.stringify(savedData));
+            if (confirm("Excluir este local?")) {
+                let data = JSON.parse(localStorage.getItem('osmLocations') || '[]');
+                localStorage.setItem('osmLocations', JSON.stringify(data.filter(p => p.id !== id)));
                 renderList();
             }
         }
 
-        // 6. Atualizar Mapa e Lista HTML
+        function editLocation(id) {
+            let data = JSON.parse(localStorage.getItem('osmLocations') || '[]');
+            const idx = data.findIndex(p => p.id === id);
+            const newName = prompt("Novo nome:", data[idx].name);
+            if (newName) {
+                data[idx].name = newName;
+                localStorage.setItem('osmLocations', JSON.stringify(data));
+                renderList();
+            }
+        }
+
         function renderList() {
             const listElement = document.getElementById('locationList');
             const savedData = JSON.parse(localStorage.getItem('osmLocations') || '[]');
-            
-            // Limpa tudo para reconstruir
             listElement.innerHTML = '';
             savedMarkersLayer.clearLayers();
 
             savedData.forEach((point) => {
-                // Adiciona marcador no mapa
-                const marker = L.marker([point.lat, point.lng])
-                    .bindPopup(`<b>${point.name}</b><br><small>${point.date}</small>`);
-                savedMarkersLayer.addLayer(marker);
+                L.marker([point.lat, point.lng]).addTo(savedMarkersLayer).bindPopup(point.name);
 
-                // Adiciona item na lista
                 const li = document.createElement('li');
                 li.className = 'location-item';
                 li.innerHTML = `
-                    <div class="location-info" onclick="focusMap(${point.lat}, ${point.lng})">
-                        <strong>${point.name}</strong>
-                        <small>📅 ${point.date}</small>
+                    <div class="item-main">
+                        <div class="location-info" onclick="map.setView([${point.lat}, ${point.lng}], 18)">
+                            <strong>${point.name}</strong>
+                            <small>${point.date}</small>
+                        </div>
                     </div>
-                    <div>
-                        <button class="btn-edit" onclick="editLocation(${point.id})">Editar</button>
-                        <button class="btn-delete" onclick="deleteLocation(${point.id})">Excluir</button>
+                    <div class="item-actions">
+                        <button class="btn-action btn-share" onclick="shareLocation('${point.name}', ${point.lat}, ${point.lng})">📤 Compartilhar</button>
+                        <button class="btn-action btn-edit" onclick="editLocation(${point.id})">✎</button>
+                        <button class="btn-action btn-delete" onclick="deleteLocation(${point.id})">✕</button>
                     </div>
                 `;
                 listElement.appendChild(li);
             });
-        }
-
-        function focusMap(lat, lng) {
-            map.setView([lat, lng], 18, { animate: true });
         }
 
         window.onload = initMap;
