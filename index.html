@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salvar Localização do Objeto</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+        #header { background: #2c3e50; color: white; padding: 15px; text-align: center; }
+        #map { flex-grow: 1; width: 100%; }
+        .controls { padding: 15px; background: #ecf0f1; display: flex; gap: 10px; justify-content: center; }
+        button { 
+            padding: 10px 20px; font-size: 16px; cursor: pointer; 
+            border: none; border-radius: 5px; background: #27ae60; color: white; 
+        }
+        button:hover { background: #2ecc71; }
+        #status { font-size: 0.9em; color: #7f8c8d; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="header">
+        <h2>Rastreador de Objetos</h2>
+        <div id="status">Aguardando localização...</div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="controls">
+        <button onclick="getLocation()">Marcar Minha Localização</button>
+        <button onclick="clearStorage()" style="background:#e74c3c">Limpar Salvos</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Inicializa o mapa com uma visão padrão (Brasil)
+        const map = L.map('map').setView([-15.78, -47.92], 4);
+
+        // Adiciona a camada do OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let marker;
+
+        // Função para carregar localização salva no LocalStorage
+        function loadSavedLocation() {
+            const saved = localStorage.getItem('objectLocation');
+            if (saved) {
+                const pos = JSON.parse(saved);
+                placeMarker(pos.lat, pos.lng, "Última localização salva");
+                map.setView([pos.lat, pos.lng], 15);
+                document.getElementById('status').innerText = "Localização carregada da memória.";
+            }
+        }
+
+        // Função para colocar o marcador no mapa
+        function placeMarker(lat, lng, popupText) {
+            if (marker) map.removeLayer(marker);
+            marker = L.marker([lat, lng]).addTo(map)
+                .bindPopup(popupText)
+                .openPopup();
+        }
+
+        // Função principal de Geolocalização
+        function getLocation() {
+            if (navigator.geolocation) {
+                document.getElementById('status').innerText = "Buscando coordenadas GPS...";
+                
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        
+                        // Centraliza mapa e coloca marcador
+                        map.setView([latitude, longitude], 17);
+                        placeMarker(latitude, longitude, "Objeto está aqui!");
+
+                        // Salva no navegador (LocalStorage)
+                        localStorage.setItem('objectLocation', JSON.stringify({ lat: latitude, lng: longitude }));
+                        
+                        document.getElementById('status').innerText = `Salvo: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+                    },
+                    (error) => {
+                        alert("Erro ao obter localização: " + error.message);
+                        document.getElementById('status').innerText = "Erro na geolocalização.";
+                    },
+                    { enableHighAccuracy: true }
+                );
+            } else {
+                alert("Seu navegador não suporta geolocalização.");
+            }
+        }
+
+        function clearStorage() {
+            localStorage.removeItem('objectLocation');
+            if (marker) map.removeLayer(marker);
+            document.getElementById('status').innerText = "Memória limpa.";
+        }
+
+        // Executa ao carregar a página
+        window.onload = loadSavedLocation;
+    </script>
+</body>
+</html>
