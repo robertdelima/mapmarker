@@ -3,106 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Salvar Localização do Objeto</title>
+    <title>Rastreador de Objetos Pro</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
-        #header { background: #2c3e50; color: white; padding: 15px; text-align: center; }
-        #map { flex-grow: 1; width: 100%; }
-        .controls { padding: 15px; background: #ecf0f1; display: flex; gap: 10px; justify-content: center; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f4f7f6; }
+        #header { background: #2c3e50; color: white; padding: 10px; text-align: center; }
+        #map { height: 50vh; width: 100%; border-bottom: 3px solid #34495e; }
+        
+        .container { padding: 15px; flex-grow: 1; overflow-y: auto; }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        
         button { 
-            padding: 10px 20px; font-size: 16px; cursor: pointer; 
-            border: none; border-radius: 5px; background: #27ae60; color: white; 
+            padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; flex: 1;
         }
-        button:hover { background: #2ecc71; }
-        #status { font-size: 0.9em; color: #7f8c8d; margin-top: 5px; }
+        .btn-save { background: #27ae60; color: white; }
+        .btn-delete { background: #e74c3c; color: white; padding: 5px 10px; flex: none; }
+        
+        .location-list { list-style: none; padding: 0; }
+        .location-item { 
+            background: white; margin-bottom: 8px; padding: 12px; border-radius: 8px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .location-info { font-size: 0.9em; cursor: pointer; color: #2980b9; }
+        #status { font-size: 0.8em; color: #bdc3c7; margin-top: 5px; }
     </style>
 </head>
 <body>
 
     <div id="header">
-        <h2>Rastreador de Objetos</h2>
-        <div id="status">Aguardando localização...</div>
+        <strong>📍 Meus Objetos Salvos</strong>
+        <div id="status">Obtendo GPS...</div>
     </div>
 
     <div id="map"></div>
 
-    <div class="controls">
-        <button onclick="getLocation()">Marcar Minha Localização</button>
-        <button onclick="clearStorage()" style="background:#e74c3c">Limpar Salvos</button>
+    <div class="container">
+        <div class="controls">
+            <button class="btn-save" onclick="saveCurrentLocation()">Salvar Localização Atual</button>
+        </div>
+
+        <h3>Histórico de Localizações</h3>
+        <ul id="locationList" class="location-list">
+            </ul>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // Inicializa o mapa com uma visão padrão (Brasil)
-        const map = L.map('map').setView([-15.78, -47.92], 4);
+        let map;
+        let currentMarker; // Marcador da posição atual (azul/círculo)
+        let savedMarkers = []; // Array para limpar marcadores do mapa quando necessário
+        let userPos = null;
 
-        // Adiciona a camada do OpenStreetMap
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+        // 1. Inicializa o Mapa
+        function initMap() {
+            map = L.map('map').setView([0, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
 
-        let marker;
-
-        // Função para carregar localização salva no LocalStorage
-        function loadSavedLocation() {
-            const saved = localStorage.getItem('objectLocation');
-            if (saved) {
-                const pos = JSON.parse(saved);
-                placeMarker(pos.lat, pos.lng, "Última localização salva");
-                map.setView([pos.lat, pos.lng], 15);
-                document.getElementById('status').innerText = "Localização carregada da memória.";
-            }
+            startTracking();
+            renderList();
         }
 
-        // Função para colocar o marcador no mapa
-        function placeMarker(lat, lng, popupText) {
-            if (marker) map.removeLayer(marker);
-            marker = L.marker([lat, lng]).addTo(map)
-                .bindPopup(popupText)
-                .openPopup();
-        }
-
-        // Função principal de Geolocalização
-        function getLocation() {
+        // 2. Rastreamento em tempo real
+        function startTracking() {
             if (navigator.geolocation) {
-                document.getElementById('status').innerText = "Buscando coordenadas GPS...";
-                
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const { latitude, longitude } = position.coords;
-                        
-                        // Centraliza mapa e coloca marcador
-                        map.setView([latitude, longitude], 17);
-                        placeMarker(latitude, longitude, "Objeto está aqui!");
+                navigator.geolocation.watchPosition((position) => {
+                    userPos = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                        timestamp: new Date().toLocaleString()
+                    };
 
-                        // Salva no navegador (LocalStorage)
-                        localStorage.setItem('objectLocation', JSON.stringify({ lat: latitude, lng: longitude }));
-                        
-                        document.getElementById('status').innerText = `Salvo: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-                    },
-                    (error) => {
-                        alert("Erro ao obter localização: " + error.message);
-                        document.getElementById('status').innerText = "Erro na geolocalização.";
-                    },
-                    { enableHighAccuracy: true }
-                );
-            } else {
-                alert("Seu navegador não suporta geolocalização.");
+                    // Atualiza marcador de posição atual no mapa
+                    if (!currentMarker) {
+                        currentMarker = L.circleMarker([userPos.lat, userPos.lng], { color: 'blue', radius: 8 }).addTo(map);
+                        map.setView([userPos.lat, userPos.lng], 16);
+                    } else {
+                        currentMarker.setLatLng([userPos.lat, userPos.lng]);
+                    }
+                    
+                    document.getElementById('status').innerText = "Sinal de GPS Ativo";
+                }, (err) => {
+                    document.getElementById('status').innerText = "Erro ao obter GPS";
+                }, { enableHighAccuracy: true });
             }
         }
 
-        function clearStorage() {
-            localStorage.removeItem('objectLocation');
-            if (marker) map.removeLayer(marker);
-            document.getElementById('status').innerText = "Memória limpa.";
+        // 3. Salvar Localização
+        function saveCurrentLocation() {
+            if (!userPos) return alert("Aguardando localização...");
+
+            const savedData = JSON.parse(localStorage.getItem('myLocations') || '[]');
+            savedData.push(userPos);
+            localStorage.setItem('myLocations', JSON.stringify(savedData));
+            
+            renderList();
         }
 
-        // Executa ao carregar a página
-        window.onload = loadSavedLocation;
+        // 4. Renderizar Lista e Marcadores Salvos
+        function renderList() {
+            const listElement = document.getElementById('locationList');
+            const savedData = JSON.parse(localStorage.getItem('myLocations') || '[]');
+            
+            // Limpa lista e marcadores antigos do mapa
+            listElement.innerHTML = '';
+            savedMarkers.forEach(m => map.removeLayer(m));
+            savedMarkers = [];
+
+            savedData.forEach((pos, index) => {
+                // Adiciona Marcador no Mapa
+                const m = L.marker([pos.lat, pos.lng]).addTo(map)
+                    .bindPopup(`Objeto salvo em: ${pos.timestamp}`);
+                savedMarkers.push(m);
+
+                // Adiciona item na lista HTML
+                const li = document.createElement('li');
+                li.className = 'location-item';
+                li.innerHTML = `
+                    <div class="location-info" onclick="focusMap(${pos.lat}, ${pos.lng})">
+                        <strong>Ponto #${index + 1}</strong><br>
+                        <small>${pos.timestamp}</small>
+                    </div>
+                    <button class="btn-delete" onclick="deleteLocation(${index})">Excluir</button>
+                `;
+                listElement.appendChild(li);
+            });
+        }
+
+        // 5. Funções de Utilidade
+        function focusMap(lat, lng) {
+            map.setView([lat, lng], 18);
+        }
+
+        function deleteLocation(index) {
+            let savedData = JSON.parse(localStorage.getItem('myLocations') || '[]');
+            savedData.splice(index, 1);
+            localStorage.setItem('myLocations', JSON.stringify(savedData));
+            renderList();
+        }
+
+        window.onload = initMap;
     </script>
 </body>
 </html>
